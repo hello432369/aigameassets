@@ -42,6 +42,26 @@ h1{color:#fff;font-size:2rem;text-align:center;margin-bottom:20px;text-shadow:0 
 .prompt-example{background:rgba(0,0,0,0.3);color:#a6e3a1;padding:15px;border-radius:8px;font-size:0.85rem;line-height:1.6;margin-top:12px;white-space:pre-wrap;font-family:'SF Mono','Consolas',monospace}
 .copy-btn{display:block;width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;transition:opacity 0.2s}
 .copy-btn:hover{opacity:0.9}
+
+/* 网格编辑器 */
+.grid-editor{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;padding:20px;overflow:auto}
+.grid-editor.active{display:flex;flex-direction:column;align-items:center}
+.grid-editor h2{color:#fff;margin-bottom:10px}
+.grid-editor .canvas-wrap{position:relative;max-width:90vw;max-height:70vh;overflow:hidden}
+.grid-editor canvas{display:block;max-width:100%;max-height:65vh;border-radius:8px;cursor:crosshair}
+.grid-editor .controls{display:flex;gap:20px;margin-top:15px;align-items:center;flex-wrap:wrap;justify-content:center}
+.grid-editor .ctrl-group{display:flex;align-items:center;gap:8px;color:#ccc;font-size:0.95rem}
+.grid-editor .ctrl-group button{width:32px;height:32px;border:none;border-radius:6px;background:rgba(102,126,234,0.3);color:#fff;font-size:1.1rem;cursor:pointer}
+.grid-editor .ctrl-group button:hover{background:rgba(102,126,234,0.5)}
+.grid-editor .ctrl-group .val{color:#fff;font-weight:600;font-size:1.1rem;min-width:24px;text-align:center}
+.grid-editor .actions{display:flex;gap:10px;margin-top:10px}
+.grid-editor .btn-save{padding:10px 28px;border:none;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:0.95rem;cursor:pointer}
+.grid-editor .btn-save:hover{opacity:0.9}
+.grid-editor .btn-close{padding:10px 28px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;background:transparent;color:#aaa;font-size:0.95rem;cursor:pointer}
+.grid-editor .btn-close:hover{color:#fff}
+.edit-grid-btn{padding:6px 14px;border:1px solid rgba(102,126,234,0.4);border-radius:6px;background:transparent;color:#667eea;font-size:0.8rem;cursor:pointer;margin-left:auto}
+.edit-grid-btn:hover{background:rgba(102,126,234,0.15)}
+.grid-editor .status{color:#8c8;font-size:0.85rem;margin-top:6px}
 </style>
 </head>
 <body>
@@ -56,6 +76,33 @@ h1{color:#fff;font-size:2rem;text-align:center;margin-bottom:20px;text-shadow:0 
   <div id="static-container" class="tab-content"></div>
   <div id="prompt-container" class="tab-content">
     <!-- 由JS渲染 -->
+  </div>
+</div>
+
+<!-- 网格编辑器弹窗 -->
+<div class="grid-editor" id="gridEditor">
+  <h2 id="geTitle">网格编辑</h2>
+  <div class="canvas-wrap">
+    <canvas id="geCanvas"></canvas>
+  </div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <span>行:</span>
+      <button onclick="adjRow(-1)">−</button>
+      <span class="val" id="geRows">4</span>
+      <button onclick="adjRow(1)">+</button>
+    </div>
+    <div class="ctrl-group">
+      <span>列:</span>
+      <button onclick="adjCol(-1)">−</button>
+      <span class="val" id="geCols">4</span>
+      <button onclick="adjCol(1)">+</button>
+    </div>
+  </div>
+  <div class="status" id="geStatus"></div>
+  <div class="actions">
+    <button class="btn-save" onclick="saveGrid()">✂️ 重新裁剪</button>
+    <button class="btn-close" onclick="closeGridEditor()">取消</button>
   </div>
 </div>
 
@@ -96,7 +143,9 @@ function renderAnim(hero) {
   var dirs = ['up','down','left','right'];
   var labels = {up:'⬆️ 向上',down:'⬇️ 向下',left:'⬅️ 向左',right:'➡️ 向右'};
   var s = [];
-  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span></div>');
+  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span>');
+  if (hero.hasRaw && !hero.hasFrames) s.push('<button class="edit-grid-btn" onclick="openGridEditor(\''+hero.dir+'/raw.png\',\''+hero.dir+'\',\'output-1\')">✏️ 编辑网格</button>');
+  s.push('</div>');
 
   if (hero.hasGifs) {
     s.push('<div class="section-label">GIF 动画</div><div class="hero-assets">'+dirs.map(function(d){
@@ -130,7 +179,9 @@ function renderAnim(hero) {
 
 function renderStatic(hero) {
   var s = [];
-  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span></div>');
+  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span>');
+  if (hero.hasRaw) s.push('<button class="edit-grid-btn" onclick="openGridEditor(\''+hero.dir+'/raw.png\',\''+hero.dir+'\',\'output-0\')">✏️ 编辑网格</button>');
+  s.push('</div>');
 
   var pv = '';
   if (hero.hasRaw) pv += '<div class="preview-item"><div class="asset-label">原图</div><img src="'+hero.dir+'/raw.png" class="asset-image"></div>';
@@ -183,6 +234,153 @@ function renderPrompt() {
     '<button class="copy-btn" onclick="copyPrompt(\'static\')">📋 复制提示词</button>' +
     '</div>' +
     '</div>';
+}
+
+/* ===== 网格编辑器（拖拽可调） ===== */
+var geImgSrc = '', geOutDir = '', geOutputRoot = '';
+var geRows = 4, geCols = 4;
+var geCanvas, geCtx, geImage = null;
+var geLinePos = {h:[], v:[]};  // 自定义线位置（百分比 0-1），空 = 等分
+var geDrag = null;  // {axis, index}
+
+function openGridEditor(imgSrc, outDir, outputRoot) {
+  geImgSrc = imgSrc;
+  geOutDir = outDir;
+  geOutputRoot = outputRoot;
+  geRows = 4; geCols = 4;
+  geLinePos = {h:[], v:[]};
+  geDrag = null;
+  document.getElementById('geRows').textContent = '4';
+  document.getElementById('geCols').textContent = '4';
+  document.getElementById('geStatus').textContent = '';
+  document.getElementById('gridEditor').classList.add('active');
+  document.getElementById('geTitle').textContent = '网格编辑 — ' + imgSrc.split('/').pop();
+
+  geCanvas = document.getElementById('geCanvas');
+  geCtx = geCanvas.getContext('2d');
+  geImage = new Image();
+  geImage.onload = function() {
+    geCanvas.width = geImage.width;
+    geCanvas.height = geImage.height;
+    drawGrid();
+  };
+  geImage.src = imgSrc + '?' + Date.now();
+}
+
+function closeGridEditor() {
+  document.getElementById('gridEditor').classList.remove('active');
+  geImage = null;
+}
+
+function getLineY(i) {
+  var pct = geLinePos.h[i] || ((i+1) / geRows);
+  return pct * geCanvas.height;
+}
+function getLineX(i) {
+  var pct = geLinePos.v[i] || ((i+1) / geCols);
+  return pct * geCanvas.width;
+}
+
+function drawGrid() {
+  if (!geImage) return;
+  var c = geCanvas, ctx = geCtx;
+  var w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(geImage, 0, 0, w, h);
+
+  ctx.strokeStyle = 'rgba(255, 50, 50, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+
+  for (var i = 0; i < geRows - 1; i++) {
+    var y = Math.round(getLineY(i));
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,50,50,0.5)';
+    ctx.beginPath(); ctx.arc(w - 10, y, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  for (var i = 0; i < geCols - 1; i++) {
+    var x = Math.round(getLineX(i));
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,50,50,0.5)';
+    ctx.beginPath(); ctx.arc(x, 10, 5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText(geRows+'\u00d7'+geCols, 8, 22);
+}
+
+function findNearest(mx, my) {
+  var t = 12;
+  for (var i = 0; i < geRows - 1; i++) {
+    if (Math.abs(my - getLineY(i)) < t) return {axis:'h', i:i};
+  }
+  for (var i = 0; i < geCols - 1; i++) {
+    if (Math.abs(mx - getLineX(i)) < t) return {axis:'v', i:i};
+  }
+  return null;
+}
+
+function setupCanvasDrag() {
+  var c = document.getElementById('geCanvas');
+  c.addEventListener('mousedown', function(e) {
+    var r = c.getBoundingClientRect();
+    var mx = (e.clientX - r.left) * (c.width / r.width);
+    var my = (e.clientY - r.top) * (c.height / r.height);
+    var near = findNearest(mx, my);
+    if (near) { geDrag = near; updateCursor(e); }
+  });
+  c.addEventListener('mousemove', function(e) {
+    var r = c.getBoundingClientRect();
+    var mx = (e.clientX - r.left) * (c.width / r.width);
+    var my = (e.clientY - r.top) * (c.height / r.height);
+    if (geDrag) {
+      if (geDrag.axis === 'h') geLinePos.h[geDrag.i] = Math.max(0.01, Math.min(0.99, my / c.height));
+      else geLinePos.v[geDrag.i] = Math.max(0.01, Math.min(0.99, mx / c.width));
+      drawGrid();
+    }
+    updateCursor(e);
+  });
+  c.addEventListener('mouseup', function() { geDrag = null; });
+  c.addEventListener('mouseleave', function() { geDrag = null; });
+}
+function updateCursor(e) {
+  var c = document.getElementById('geCanvas');
+  if (geDrag) { c.style.cursor = geDrag.axis === 'h' ? 'ns-resize' : 'ew-resize'; return; }
+  var r = c.getBoundingClientRect();
+  var mx = (e.clientX - r.left) * (c.width / r.width);
+  var my = (e.clientY - r.top) * (c.height / r.height);
+  c.style.cursor = findNearest(mx, my) ? 'pointer' : 'crosshair';
+}
+
+document.addEventListener('DOMContentLoaded', setupCanvasDrag);
+
+function adjRow(d) {
+  geRows = Math.max(1, Math.min(24, geRows + d));
+  document.getElementById('geRows').textContent = geRows;
+  geLinePos.h = []; drawGrid();
+}
+function adjCol(d) {
+  geCols = Math.max(1, Math.min(24, geCols + d));
+  document.getElementById('geCols').textContent = geCols;
+  geLinePos.v = []; drawGrid();
+}
+
+function saveGrid() {
+  var st = document.getElementById('geStatus');
+  st.textContent = '⏳ 发送中...';
+  var data = JSON.stringify({
+    source: geImgSrc.split('?')[0],
+    rows: geRows,
+    cols: geCols,
+    output_dir: geOutputRoot
+  });
+  fetch('http://localhost:8765/save-grid', {method:'POST', body:data})
+    .then(function(r) {
+      if (r.ok) { st.textContent = '✅ 已发送！处理中...'; setTimeout(closeGridEditor, 1500); }
+      else { st.textContent = '❌ 失败: '+r.status; }
+    })
+    .catch(function(e) { st.textContent = '❌ 连接失败，脚本在运行吗？ '+e.message; });
 }
 
 function copyPrompt(type) {

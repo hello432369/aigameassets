@@ -3,9 +3,10 @@
 Sprite Forge - 全自动精灵图处理器
 支持动画(4x4)和静态(切割)两种模式
 """
-import os, sys, time, json, shutil, argparse, math
+import os, sys, time, json, shutil, argparse, math, threading
 from pathlib import Path
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -34,8 +35,8 @@ def detect_grid_size(image: Image.Image):
         max_val = proj.max()
         if max_val < 1:
             return 0
-        threshold = max(max_val * 0.02, 2.0)
-        min_gap = max(2, total_len // 200)
+        threshold = max(max_val * 0.05, 5.0)
+        min_gap = max(5, total_len // 80)
         gaps = 0
         in_gap = False
         cur = 0
@@ -67,7 +68,7 @@ def detect_grid_size(image: Image.Image):
     return (rows, cols)
 
 
-def process_image(image_path: Path, output_dir: Path, config: dict):
+def process_image(image_path: Path, output_dir: Path, config: dict, mode: str = "auto"):
     print(f"🎨 处理: {image_path.name}")
     timestamp = datetime.now().strftime("%m%d_%H%M%S")
     folder_name = f"{image_path.stem}_{timestamp}"
@@ -78,8 +79,12 @@ def process_image(image_path: Path, output_dir: Path, config: dict):
     raw = Image.open(image_path).convert("RGBA")
     raw.save(out / "raw.png")
 
-    rows, cols = detect_grid_size(raw)
-    print(f"   🔍 检测到网格: {rows}x{cols}")
+    if mode == "anim":
+        rows, cols = 4, 4
+        print(f"   🔍 input-1 强制 4x4 动画模式")
+    else:
+        rows, cols = detect_grid_size(raw)
+        print(f"   🔍 检测到网格: {rows}x{cols}")
 
     cleaned = remove_bg_magenta(raw.copy(), config["threshold"], config["edge_threshold"])
     cleaned.save(out / "clean.png")
@@ -117,6 +122,59 @@ def process_image(image_path: Path, output_dir: Path, config: dict):
         print(f"   ✅ 静态: 原图 + 抠图完成")
 
     meta = {"source_file":image_path.name,"processed_at":datetime.now().isoformat(),"grid":f"{rows}x{cols}","cell_size":cell_size if rows == 4 and cols == 4 else None,"total_frames":total_frames,"config":config}
+    (out / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"   ✨ 完成: {out.name}")
+    return out
+
+
+def process_image_with_grid(image_path: Path, output_dir: Path, config: dict, rows: int, cols: int):
+    """用指定的行列数处理图片（手动网格覆盖用）"""
+    print(f"🎨 手动网格处理: {image_path.name} ({rows}x{cols})")
+    timestamp = datetime.now().strftime("%m%d_%H%M%S")
+    folder_name = f"{image_path.stem}_{timestamp}"
+    out = output_dir / folder_name
+    out.mkdir(parents=True, exist_ok=True)
+    print(f"   📁 输出到: {out.name}")
+
+    raw = Image.open(image_path).convert("RGBA")
+    raw.save(out / "raw.png")
+    cleaned = remove_bg_magenta(raw.copy(), config["threshold"], config["edge_threshold"])
+    cleaned.save(out / "clean.png")
+
+    cell_size = 96
+    frames, frame_info = split_grid(raw, rows, cols, cell_size,
+        config["threshold"], config["edge_threshold"],
+        fit_scale=config["fit_scale"], trim_border_px=config["trim_border"],
+        edge_clean_depth=config["edge_clean_depth"], align=config["align"],
+        shared_scale=config["shared_scale"], component_mode=config["component_mode"],
+        component_padding=config["component_padding"], min_component_area=config["min_component_area"],
+        edge_touch_margin=config["edge_touch_margin"])
+
+    total_frames = rows * cols
+    frames_dir = out / "frames"; frames_dir.mkdir(exist_ok=True)
+
+    if rows == 4 and cols == 4:
+        directions = ["down","left","right","up"]
+        labels = [f"{d}-{i}" for d in directions for i in range(1,5)]
+        for label, frame in zip(labels, frames):
+            frame.save(frames_dir / f"{label}.png")
+        sheet = compose_sheet(frames, rows, cols, cell_size)
+        sheet.save(out / "sheet.png")
+        strips_dir = out / "strips"; strips_dir.mkdir(exist_ok=True)
+        gifs_dir = out / "gifs"; gifs_dir.mkdir(exist_ok=True)
+        for row_idx, direction in enumerate(directions):
+            row_frames = frames[row_idx * cols : (row_idx + 1) * cols]
+            compose_sheet(row_frames, 1, cols, cell_size).save(strips_dir / f"{direction}-strip.png")
+            save_transparent_gif(row_frames, gifs_dir / f"{direction}.gif", config["duration"])
+        print(f"   ✅ {rows}x{cols} 动画: sheet + 4方向GIF + 条带")
+    else:
+        for i, frame in enumerate(frames):
+            frame.save(frames_dir / f"frame-{i+1}.png")
+        sheet = compose_sheet(frames, rows, cols, cell_size)
+        sheet.save(out / "sheet.png")
+        print(f"   ✅ {rows}x{cols} 切割: {total_frames} 帧 + 图集")
+
+    meta = {"source_file":image_path.name,"processed_at":datetime.now().isoformat(),"grid":f"{rows}x{cols}","cell_size":cell_size,"total_frames":total_frames,"mode":"manual","config":config}
     (out / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"   ✨ 完成: {out.name}")
     return out
@@ -164,7 +222,7 @@ def write_data_js():
         f"window.heroesData = {json.dumps(data, indent=2, ensure_ascii=False)};", encoding="utf-8")
 
 
-def process_existing(input_dir: Path, output_dir: Path, processed_dir: Path, config: dict):
+def process_existing(input_dir: Path, output_dir: Path, processed_dir: Path, config: dict, mode: str = "auto"):
     if not input_dir.exists():
         return
     files = [f for f in input_dir.iterdir() if f.is_file() and f.suffix.lower() in WATCH_EXTENSIONS and ".processed" not in str(f)]
@@ -174,7 +232,7 @@ def process_existing(input_dir: Path, output_dir: Path, processed_dir: Path, con
     print(f"\n🔍 发现 {len(files)} 个文件")
     for fp in files:
         try:
-            process_image(fp, output_dir, config)
+            process_image(fp, output_dir, config, mode)
             processed_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             shutil.move(str(fp), str(processed_dir / f"{fp.stem}_{ts}{fp.suffix}"))
@@ -184,6 +242,82 @@ def process_existing(input_dir: Path, output_dir: Path, processed_dir: Path, con
     write_data_js()
 
 
+def start_http_server():
+    """启动 HTTP 服务器，接收前端发来的网格覆盖数据"""
+    HOST, PORT = 'localhost', 8765
+
+    class GridHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path == '/save-grid':
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length)
+                try:
+                    Path('grid-override.json').write_bytes(body)
+                    self.send_response(200)
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(b'ok')
+                    print(f"   🌐 收到网格覆盖请求")
+                except Exception as e:
+                    self.send_response(500)
+                    self.end_headers()
+                    self.wfile.write(str(e).encode())
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer((HOST, PORT), GridHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print(f"   🌐 网格编辑接口: http://{HOST}:{PORT}/save-grid")
+
+
+def check_grid_override():
+    """检查 grid-override.json，有新的覆盖请求就处理"""
+    path = Path("grid-override.json")
+    if not path.exists():
+        return
+    try:
+        override = json.loads(path.read_text(encoding="utf-8"))
+        raw_path = Path(override["source"])
+        rows = int(override["rows"])
+        cols = int(override["cols"])
+        output_dir = Path(override["output_dir"])
+
+        if not raw_path.exists():
+            print(f"   ❌ 网格覆盖: 源文件不存在 {raw_path}")
+            path.unlink()
+            return
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        process_image_with_grid(raw_path, output_dir, PROCESS_CONFIG, rows, cols)
+
+        # 移动到 .processed
+        inp_dir = raw_path.parent
+        proc_dir = inp_dir / ".processed"
+        proc_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.move(str(raw_path), str(proc_dir / f"{raw_path.stem}_{ts}{raw_path.suffix}"))
+
+        write_data_js()
+        path.unlink()
+        print(f"   ✅ 网格覆盖处理完成")
+    except Exception as e:
+        print(f"   ❌ 网格覆盖处理失败: {e}")
+        import traceback; traceback.print_exc()
+        path.unlink()
+
+
 def start_watching():
     dirs = [
         (Path("input-1"), Path("output-1"), Path("input-1/.processed")),
@@ -191,17 +325,21 @@ def start_watching():
     ]
     observers = []
 
+    start_http_server()
+
     for inp, out, proc in dirs:
         inp.mkdir(parents=True, exist_ok=True)
         out.mkdir(parents=True, exist_ok=True)
-        process_existing(inp, out, proc, PROCESS_CONFIG)
+        p_mode = "anim" if inp.name == "input-1" else "static"
+        process_existing(inp, out, proc, PROCESS_CONFIG, p_mode)
         write_data_js()
 
         class Handler(FileSystemEventHandler):
-            def __init__(self, out_dir, proc_dir):
+            def __init__(self, out_dir, proc_dir, mode):
                 self.processing = set()
                 self.out_dir = out_dir
                 self.proc_dir = proc_dir
+                self.mode = mode
             def on_created(self, e):
                 if e.is_directory: return
                 fp = Path(e.src_path)
@@ -210,7 +348,7 @@ def start_watching():
                 self.processing.add(fp)
                 try:
                     time.sleep(0.5)
-                    process_image(fp, self.out_dir, PROCESS_CONFIG)
+                    process_image(fp, self.out_dir, PROCESS_CONFIG, self.mode)
                     self.proc_dir.mkdir(parents=True, exist_ok=True)
                     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                     shutil.move(str(fp), str(self.proc_dir / f"{fp.stem}_{ts}{fp.suffix}"))
@@ -220,7 +358,7 @@ def start_watching():
                 finally:
                     self.processing.discard(fp)
 
-        h = Handler(out, proc)
+        h = Handler(out, proc, p_mode)
         o = Observer()
         o.schedule(h, str(inp), recursive=False)
         o.start()
@@ -237,7 +375,9 @@ def start_watching():
 
     print(f"\n{'='*40}\n🚀 Sprite Forge 已启动\n📥 input-1 ➡ output-1 (动画) | input-0 ➡ output-0 (静态)\n{'='*40}")
     try:
-        while True: time.sleep(1)
+        while True:
+            time.sleep(1)
+            check_grid_override()
     except KeyboardInterrupt:
         for o in observers: o.stop()
         for o in observers: o.join()
@@ -255,7 +395,8 @@ def main():
     ]:
         inp.mkdir(parents=True, exist_ok=True)
         out.mkdir(parents=True, exist_ok=True)
-        process_existing(inp, out, proc, PROCESS_CONFIG)
+        p_mode = "anim" if inp.name == "input-1" else "static"
+        process_existing(inp, out, proc, PROCESS_CONFIG, p_mode)
 
     write_data_js()
 
