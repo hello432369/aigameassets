@@ -10,3 +10,4 @@
 7. 在index.html中查看结果
 
    
+![Screenshot](https://github.com/hello432369/aigameassets/blob/main/ScreenShot_2026-06-02_204417_001.png?raw=true)
