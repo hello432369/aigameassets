@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>精灵工坊</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;padding:20px}
+.container{max-width:1400px;margin:0 auto}
+h1{color:#fff;font-size:2rem;text-align:center;margin-bottom:20px;text-shadow:0 2px 10px rgba(0,0,0,0.3)}
+.tabs{display:flex;gap:0;margin-bottom:20px;justify-content:center}
+.tab{padding:10px 30px;background:rgba(255,255,255,0.05);color:#888;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:0.95rem;border-radius:8px 8px 0 0;transition:all 0.2s}
+.tab:first-child{border-radius:8px 0 0 8px}
+.tab:last-child{border-radius:0 8px 8px 0}
+.tab.active{background:rgba(102,126,234,0.3);color:#fff;border-color:#667eea}
+.tab:hover{color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.hero-row{background:rgba(255,255,255,0.05);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid rgba(255,255,255,0.1)}
+.hero-header{display:flex;align-items:center;gap:15px;margin-bottom:20px;padding-bottom:15px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.hero-name{font-size:1.3rem;font-weight:600;color:#fff;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:8px 20px;border-radius:25px}
+.source-file{color:#aaa;font-size:0.9rem}
+.section-label{color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;margin-top:5px}
+.hero-assets{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:15px}
+.asset-group{background:rgba(255,255,255,0.03);border-radius:10px;padding:10px;text-align:center}
+.asset-label{color:#888;font-size:0.75rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+.asset-image{max-width:100%;height:auto;border-radius:6px;box-shadow:0 4px 15px rgba(0,0,0,0.2);background:rgba(255,255,255,0.05)}
+.static-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:4px;margin-top:8px}
+.static-grid img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:4px;background:rgba(255,255,255,0.05)}
+.preview-section{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px;padding-top:15px;border-top:1px solid rgba(255,255,255,0.1)}
+.preview-item{flex:1;min-width:150px;max-width:400px}
+.preview-item img{width:100%;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.2)}
+.count{color:#888;font-size:0.9rem;margin-bottom:15px;text-align:center}
+.tab-badge{display:inline-block;font-size:0.7rem;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;margin-left:6px;vertical-align:middle}
+.prompt-box{max-width:800px;margin:0 auto}
+.prompt-section{background:rgba(255,255,255,0.05);border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid rgba(255,255,255,0.1)}
+.prompt-section-title{font-size:1.1rem;font-weight:600;color:#fff;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.prompt-item{color:#cdd6f4;font-size:0.9rem;padding:6px 0;display:flex;gap:12px}
+.prompt-label{color:#a6adc8;font-weight:500;min-width:80px;flex-shrink:0}
+.prompt-divider{height:1px;background:rgba(255,255,255,0.08);margin:10px 0}
+.prompt-example{background:rgba(0,0,0,0.3);color:#a6e3a1;padding:15px;border-radius:8px;font-size:0.85rem;line-height:1.6;margin-top:12px;white-space:pre-wrap;font-family:'SF Mono','Consolas',monospace}
+.copy-btn{display:block;width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;transition:opacity 0.2s}
+.copy-btn:hover{opacity:0.9}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>精灵工坊</h1>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('anim')">动画 <span class="tab-badge" id="anim-badge">0</span></div>
+    <div class="tab" onclick="switchTab('static')">静态 <span class="tab-badge" id="static-badge">0</span></div>
+    <div class="tab" onclick="switchTab('prompt')">提示词</div>
+  </div>
+  <div id="anim-container" class="tab-content active"></div>
+  <div id="static-container" class="tab-content"></div>
+  <div id="prompt-container" class="tab-content">
+    <!-- 由JS渲染 -->
+  </div>
+</div>
+
+<script>
+var heroesData = {anim:[],static:[]};
+var currentTab = 'anim';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(function(t){
+    var txt = t.textContent.trim();
+    t.classList.toggle('active', txt === (tab==='anim'?'动画':tab==='static'?'静态':'提示词'));
+  });
+  document.querySelectorAll('.tab-content').forEach(function(c){c.classList.toggle('active',c.id===tab+'-container')});
+  if (tab === 'prompt') renderPrompt();
+  else renderTab(tab);
+}
+
+function loadHeroes() {
+  if (!window.heroesData) return;
+  heroesData = window.heroesData;
+  document.getElementById('anim-badge').textContent = (heroesData.anim||[]).length;
+  document.getElementById('static-badge').textContent = (heroesData.static||[]).length;
+  if (currentTab !== 'prompt') renderTab(currentTab);
+}
+
+function renderTab(tab) {
+  var list = heroesData[tab]||[];
+  var container = document.getElementById(tab+'-container');
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:#666;padding:50px;">暂无素材</div>';
+    return;
+  }
+  container.innerHTML = list.map(function(h){ return tab==='anim' ? renderAnim(h) : renderStatic(h); }).join('');
+}
+
+function renderAnim(hero) {
+  var dirs = ['up','down','left','right'];
+  var labels = {up:'⬆️ 向上',down:'⬇️ 向下',left:'⬅️ 向左',right:'➡️ 向右'};
+  var s = [];
+  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span></div>');
+
+  if (hero.hasGifs) {
+    s.push('<div class="section-label">GIF 动画</div><div class="hero-assets">'+dirs.map(function(d){
+      return '<div class="asset-group"><div class="asset-label">'+labels[d]+'</div><img src="'+hero.dir+'/gifs/'+d+'.gif" class="asset-image"></div>';
+    }).join('')+'</div>');
+  }
+
+  if (hero.hasStrips) {
+    s.push('<div class="section-label">序列条</div><div class="hero-assets">'+dirs.map(function(d){
+      return '<div class="asset-group"><div class="asset-label">'+labels[d]+'</div><img src="'+hero.dir+'/strips/'+d+'-strip.png" class="asset-image"></div>';
+    }).join('')+'</div>');
+  }
+
+  if (hero.hasFrames) {
+    s.push('<div class="section-label">帧序列</div><div class="hero-assets">'+dirs.map(function(d){
+      var imgs = '';
+      for (var i=1;i<=4;i++) imgs += '<img src="'+hero.dir+'/frames/'+d+'-'+i+'.png" style="flex:1;min-width:0;border-radius:4px;background:rgba(255,255,255,0.05);aspect-ratio:1;object-fit:contain;">';
+      return '<div class="asset-group" style="padding:8px;"><div class="asset-label" style="margin-bottom:6px;">'+labels[d]+'</div><div style="display:flex;gap:4px;">'+imgs+'</div></div>';
+    }).join('')+'</div>');
+  }
+
+  var pv = '';
+  if (hero.hasRaw) pv += '<div class="preview-item"><div class="asset-label">原图</div><img src="'+hero.dir+'/raw.png" class="asset-image"></div>';
+  if (hero.hasClean) pv += '<div class="preview-item"><div class="asset-label">抠图后</div><img src="'+hero.dir+'/clean.png" class="asset-image"></div>';
+  if (hero.hasSheet) pv += '<div class="preview-item"><div class="asset-label">图集</div><img src="'+hero.dir+'/sheet.png" class="asset-image"></div>';
+  if (pv) s.push('<div class="section-label">预览</div><div class="preview-section">'+pv+'</div>');
+
+  s.push('</div>');
+  return s.join('');
+}
+
+function renderStatic(hero) {
+  var s = [];
+  s.push('<div class="hero-row"><div class="hero-header"><div class="hero-name">'+hero.name+'</div><span class="source-file">'+hero.sourceFile+'</span></div>');
+
+  var pv = '';
+  if (hero.hasRaw) pv += '<div class="preview-item"><div class="asset-label">原图</div><img src="'+hero.dir+'/raw.png" class="asset-image"></div>';
+  if (hero.hasClean) pv += '<div class="preview-item"><div class="asset-label">抠图后</div><img src="'+hero.dir+'/clean.png" class="asset-image"></div>';
+  if (hero.hasSheet) pv += '<div class="preview-item"><div class="asset-label">图集</div><img src="'+hero.dir+'/sheet.png" class="asset-image"></div>';
+  if (hero.hasGifs) pv += '<div class="preview-item"><div class="asset-label">GIF</div><img src="'+hero.dir+'/gifs/animation.gif" class="asset-image"></div>';
+  if (pv) s.push('<div class="section-label">预览</div><div class="preview-section">'+pv+'</div>');
+
+  if (hero.hasFrames && hero.totalFrames) {
+    var fdir = hero.dir+'/frames';
+    s.push('<div class="section-label">切割结果 (共 '+hero.totalFrames+' 帧)</div><div class="static-grid">');
+    for (var i=1;i<=hero.totalFrames;i++) {
+      s.push('<img src="'+fdir+'/frame-'+i+'.png">');
+    }
+    s.push('</div>');
+  }
+
+  s.push('</div>');
+  return s.join('');
+}
+
+function renderPrompt() {
+  var c = document.getElementById('prompt-container');
+  var animFull = '一张4×4像素风格俯视行走精灵图，背景纯色品红#FF00FF。\n角色白衣侠客，手持长剑，墨色长发，16-bit像素风格。\n第1行：向下行走4帧（中立→左脚前→中立→右脚前）\n第2行：向左行走4帧\n第3行：向右行走4帧\n第4行：向上行走4帧\n所有帧角色居中，比例一致，不要画网格线，\n不要格子边框，不能超出格子边界。\n无阴影、无文字、无UI。';
+  var staticFull = '一张9×9像素风格道具图标合集，背景纯色品红#FF00FF。\n包含81个中国风道具：玉佩、铜钱、折扇、茶壶、\n毛笔、葫芦、灯笼、笛子、酒坛、罗盘、香炉、\n拂尘、铜镜、梳子、花簪、印章、画卷。\n每个道具各自格子内居中，16-bit像素风格，\n不要画网格线，不要格子边框，\n不能超出格子边界。无阴影、无文字、无UI。';
+  c.innerHTML = '<div class="prompt-box">' +
+    '<div class="prompt-section"><div class="prompt-section-title">🎬 动画精灵图</div>' +
+    '<div class="prompt-item"><span class="prompt-label">类型</span>玩家 | NPC | 生物 | 角色 | 法术</div>' +
+    '<div class="prompt-item"><span class="prompt-label">动作</span>待机 | 行走 | 奔跑 | 攻击 | 施法 | 射击 | 跳跃 | 受伤</div>' +
+    '<div class="prompt-item"><span class="prompt-label">视角</span>俯视 | 侧视 | 3/4</div>' +
+    '<div class="prompt-item"><span class="prompt-label">网格</span>4×4（四方向行走），风格：像素 | 高清 | 复古</div>' +
+    '<div class="prompt-item"><span class="prompt-label">参考</span>有 / 无</div>' +
+    '<div class="prompt-divider"></div>' +
+    '<div class="prompt-item"><span class="prompt-label">规则</span>背景#FF00FF，无阴影无文字，每帧居中同比例</div>' +
+    '<div class="prompt-item"><span class="prompt-label">布局</span>行1下 行2左 行3右 行4上，每行中立→左前→中立→右前</div>' +
+    '<div class="prompt-item"><span class="prompt-label">边界</span>角色武器不出格，四周品红边距</div>' +
+    '<div class="prompt-item"><span class="prompt-label">帧</span>16帧等大等比例</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px"><pre class="prompt-example" style="flex:1;margin:0" id="anim-prompt-text">' + animFull + '</pre></div>' +
+    '<button class="copy-btn" onclick="copyPrompt(\'anim\')">📋 复制提示词</button>' +
+    '</div>' +
+    '<div class="prompt-section"><div class="prompt-section-title">✂️ 静态切割</div>' +
+    '<div class="prompt-item"><span class="prompt-label">类型</span>道具 | 武器 | 装备 | 物品 | 图标 | 装饰</div>' +
+    '<div class="prompt-item"><span class="prompt-label">网格</span>9×9（81格）</div>' +
+    '<div class="prompt-item"><span class="prompt-label">风格</span>高清 | 像素 | 项目风格</div>' +
+    '<div class="prompt-item"><span class="prompt-label">参考</span>有 / 无</div>' +
+    '<div class="prompt-divider"></div>' +
+    '<div class="prompt-item"><span class="prompt-label">规则</span>背景#FF00FF，无阴影无文字，格子内居中</div>' +
+    '<div class="prompt-item"><span class="prompt-label">边界</span>不能超出单元格</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px"><pre class="prompt-example" style="flex:1;margin:0" id="static-prompt-text">' + staticFull + '</pre></div>' +
+    '<button class="copy-btn" onclick="copyPrompt(\'static\')">📋 复制提示词</button>' +
+    '</div>' +
+    '</div>';
+}
+
+function copyPrompt(type) {
+  var text = document.getElementById(type==='anim'?'anim-prompt-text':'static-prompt-text').textContent;
+  navigator.clipboard.writeText(text).then(function(){
+    var btn = document.querySelector('.copy-btn[onclick*="'+type+'"]');
+    var orig = btn.textContent;
+    btn.textContent = '✅ 已复制';
+    setTimeout(function(){btn.textContent = orig;}, 1500);
+  });
+}
+
+function pollData() {
+  var s = document.createElement('script');
+  s.src = 'data.js?'+Date.now();
+  document.body.appendChild(s);
+  setTimeout(function(){
+    if (window.heroesData) loadHeroes();
+    s.remove();
+  }, 200);
+}
+
+setInterval(pollData, 2000);
+pollData();
+renderPrompt();
+</script>
+</body>
+</html>

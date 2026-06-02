@@ -1,0 +1,21 @@
+{
+  "source_file": "raw-2.png",
+  "processed_at": "2026-06-02T20:17:37.926921",
+  "grid": "14x9",
+  "cell_size": null,
+  "total_frames": 0,
+  "config": {
+    "threshold": 100,
+    "edge_threshold": 150,
+    "fit_scale": 0.85,
+    "trim_border": 4,
+    "edge_clean_depth": 3,
+    "align": "bottom",
+    "shared_scale": true,
+    "component_mode": "largest",
+    "component_padding": 0,
+    "min_component_area": 1,
+    "edge_touch_margin": 0,
+    "duration": 200
+  }
+}
