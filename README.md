@@ -1,5 +1,5 @@
 # aigameassets
-游戏动画序列图裁剪
+精灵工坊
 
 1. 需要python环境 (建议用trea 编辑器帮你搞定python安装和python库安装)
 2. 需要自己生成ai图片,提示词在index.html中
